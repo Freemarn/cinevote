@@ -1,0 +1,195 @@
+# CineVote CI/CD
+# Every push and pull request: lint + unit tests.
+# Push to main (or a manual run): build both images, push
+# them to Docker Hub, deploy to the backend EC2 server over
+# SSH, smoke test, and roll back if the new version is sick.
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:      # adds a "Run workflow" button
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Python packages
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -r flask-app/requirements.txt
+
+      - name: "Lint: flake8"
+        run: flake8 flask-app
+
+      - name: "Unit tests: pytest"
+        run: pytest -v flask-app/tests
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: Install worker packages
+        working-directory: worker
+        run: npm install
+
+      - name: "Lint: eslint"
+        working-directory: worker
+        run: npx eslint .
+
+      - name: "Unit tests: jest"
+        working-directory: worker
+        run: npx jest --verbose
+
+  deploy:
+    name: Build, push and deploy
+    needs: test
+    # Never deploy from a pull request, only from main
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production   # one deploy at a time
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write   # lets this job sign in to AWS with OIDC
+    env:
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      FRONTEND_SG_ID: ${{ vars.FRONTEND_SG_ID }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Make the image tag from the commit
+        run: echo "TAG=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: "Docker build and push: flask"
+        uses: docker/build-push-action@v7
+        with:
+          context: ./flask-app
+          push: true
+          tags: ${{ env.DOCKERHUB_USERNAME }}/cinevote-flask:${{ env.TAG }}
+
+      - name: "Docker build and push: worker"
+        uses: docker/build-push-action@v7
+        with:
+          context: ./worker
+          push: true
+          tags: ${{ env.DOCKERHUB_USERNAME }}/cinevote-worker:${{ env.TAG }}
+
+      - name: Sign in to AWS (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Find the frontend and open SSH for this runner only
+        id: ssh-open
+        run: |
+          FRONTEND_IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=voting-frontend" \
+                      "Name=instance-state-name,Values=running" \
+            --query "Reservations[0].Instances[0].PublicIpAddress" \
+            --output text)
+          if [ -z "$FRONTEND_IP" ] || [ "$FRONTEND_IP" = "None" ]; then
+            echo "::error::voting-frontend is not running. Start it first."
+            exit 1
+          fi
+          RUNNER_IP=$(curl -fsS https://checkip.amazonaws.com)
+          echo "frontend_ip=$FRONTEND_IP" >> "$GITHUB_OUTPUT"
+          echo "runner_ip=$RUNNER_IP" >> "$GITHUB_OUTPUT"
+          echo "Frontend: $FRONTEND_IP   Runner: $RUNNER_IP"
+          # Allow port 22 from this runner's IP only
+          if ! OUT=$(aws ec2 authorize-security-group-ingress \
+                --group-id "$FRONTEND_SG_ID" \
+                --protocol tcp --port 22 \
+                --cidr "$RUNNER_IP/32" 2>&1); then
+            echo "$OUT"
+            echo "$OUT" | grep -q InvalidPermission.Duplicate || exit 1
+          fi
+
+      - name: Set up the SSH key and the jump host
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          FRONTEND_IP: ${{ steps.ssh-open.outputs.frontend_ip }}
+          BACKEND_IP: ${{ vars.BACKEND_IP }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          cat > ~/.ssh/config <<EOF
+          Host voting-frontend
+            HostName $FRONTEND_IP
+            User grplead
+            IdentityFile ~/.ssh/deploy_key
+            StrictHostKeyChecking accept-new
+            ConnectTimeout 10
+          Host voting-backend
+            HostName $BACKEND_IP
+            User grplead
+            IdentityFile ~/.ssh/deploy_key
+            ProxyJump voting-frontend
+            StrictHostKeyChecking accept-new
+            ConnectTimeout 10
+          EOF
+          # The new firewall rule can take a few seconds to apply
+          for i in 1 2 3 4 5 6; do
+            if ssh voting-backend true; then
+              echo "SSH to the backend works"
+              exit 0
+            fi
+            echo "SSH not ready ($i/6), retrying in 10 s"
+            sleep 10
+          done
+          echo "::error::Could not SSH to the backend through the frontend"
+          exit 1
+
+      - name: "SSH to EC2: pull, up -d, smoke test, roll back"
+        run: |
+          scp -q deploy/deploy.sh voting-backend:/tmp/cinevote-deploy.sh
+          ssh voting-backend "bash /tmp/cinevote-deploy.sh $TAG"
+
+      - name: "Smoke test through Nginx (the public address)"
+        env:
+          FRONTEND_IP: ${{ steps.ssh-open.outputs.frontend_ip }}
+        run: |
+          curl -fsS --retry 3 --retry-delay 5 --retry-all-errors \
+            "http://$FRONTEND_IP/health"
+          echo
+          echo "### Deployed \`$TAG\` to production" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Close SSH again
+        if: always() && steps.ssh-open.outputs.runner_ip != ''
+        env:
+          RUNNER_IP: ${{ steps.ssh-open.outputs.runner_ip }}
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$FRONTEND_SG_ID" \
+            --protocol tcp --port 22 \
+            --cidr "$RUNNER_IP/32" || true

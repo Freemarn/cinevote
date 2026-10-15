@@ -1,0 +1,6 @@
+# Never commit secrets or local junk
+.env
+*.pem
+__pycache__/
+.pytest_cache/
+node_modules/

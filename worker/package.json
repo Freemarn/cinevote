@@ -1,0 +1,22 @@
+{
+  "name": "cinevote-worker",
+  "version": "1.0.0",
+  "private": true,
+  "main": "worker.js",
+  "scripts": {
+    "start": "node worker.js",
+    "lint": "eslint .",
+    "test": "jest"
+  },
+  "dependencies": {
+    "pg": "8.13.1",
+    "redis": "4.7.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.1.0",
+    "globals": "^16.4.0",
+    "jest": "^30.2.0"
+  }
+}
+

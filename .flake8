@@ -1,0 +1,4 @@
+[flake8]
+# Our app.py keeps some long SQL and message lines, so allow 120 characters.
+max-line-length = 120
+exclude = .git,__pycache__,node_modules

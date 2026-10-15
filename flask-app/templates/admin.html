@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+<section class="hero fade-up">
+  <p class="eyebrow">Admin dashboard · {{ week }}</p>
+  <h1>Voting statistics</h1>
+</section>
+
+<div class="stats">
+  <div class="stat fade-up" style="--d:.00s"><span class="stat-label">Registered users</span><span class="stat-value" data-count="{{ stats.users }}">{{ stats.users }}</span></div>
+  <div class="stat fade-up" style="--d:.05s"><span class="stat-label">Votes this week</span><span class="stat-value" data-count="{{ stats.week_votes }}">{{ stats.week_votes }}</span></div>
+  <div class="stat fade-up" style="--d:.10s"><span class="stat-label">Turnout this week</span><span class="stat-value">{{ turnout }}%</span></div>
+  <div class="stat fade-up" style="--d:.15s"><span class="stat-label">All-time votes</span><span class="stat-value" data-count="{{ stats.all_votes }}">{{ stats.all_votes }}</span></div>
+  <div class="stat fade-up" style="--d:.20s"><span class="stat-label">Waiting in queue</span><span class="stat-value">{{ queue_len if queue_len is not none else "n/a" }}</span></div>
+</div>
+
+<div class="layout">
+  <section class="panel fade-up">
+    <h3 class="section-title">This week's results</h3>
+    <ol class="board">
+      {% for m in board %}
+      <li>
+        <div class="row"><span>{{ loop.index }}. {{ m.title }}</span><strong>{{ m.votes }} · {{ ((m.votes / total * 100) if total else 0)|round(1) }}%</strong></div>
+        <div class="bar"><div class="fill" style="--w: {{ ((m.votes / max_votes * 100) if max_votes else 0)|round(1) }}%"></div></div>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  <section class="panel fade-up" style="--d:.1s">
+    <h3 class="section-title">Votes per week</h3>
+    {% if weekly %}
+    <div class="columns">
+      {% for w in weekly %}
+      <div class="col">
+        <small>{{ w.votes }}</small>
+        <div class="col-bar" style="--h: {{ (w.votes / max_week * 80)|round(1) }}%; --d: {{ '%.2f'|format(loop.index0 * 0.08) }}s"></div>
+        <span>{{ w.week[5:] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<p class="muted">No votes yet.</p>{% endif %}
+  </section>
+</div>
+
+<div class="layout">
+  <section class="panel fade-up">
+    <h3 class="section-title">Recent votes</h3>
+    {% if recent %}
+    <table class="table">
+      <thead><tr><th>User</th><th>Movie</th><th>Week</th><th>When (UTC)</th></tr></thead>
+      <tbody>
+        {% for v in recent %}
+        <tr><td>{{ v.username }}</td><td>{{ v.title }}</td><td>{{ v.week }}</td><td>{{ v.created_at.strftime('%d %b %H:%M') }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="muted">No votes yet.</p>{% endif %}
+  </section>
+  <section class="panel fade-up" style="--d:.1s">
+    <h3 class="section-title">Manage the ballot</h3>
+    <form method="post" action="{{ url_for('add_movie') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Title <input name="title" required maxlength="120"></label>
+      <div class="form-row">
+        <label>Year <input name="year" type="number" min="1888" max="2100"></label>
+        <label>Genre <input name="genre" maxlength="60"></label>
+      </div>
+      <label>Short description <textarea name="blurb" rows="2" maxlength="300"></textarea></label>
+      <button class="btn btn-primary btn-block" type="submit">Add movie</button>
+    </form>
+    <ul class="movie-admin">
+      {% for m in movies %}
+      <li>
+        <span>{{ m.title }} {% if not m.active %}<span class="pill pill-muted">hidden</span>{% endif %}</span>
+        <form method="post" action="{{ url_for('toggle_movie', movie_id=m.id) }}" class="inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-ghost" type="submit">{{ "Show" if not m.active else "Hide" }}</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

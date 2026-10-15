@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ "Create account" if mode == "register" else "Log in" }}{% endblock %}
+{% block content %}
+<section class="auth-card fade-up">
+  <p class="eyebrow">CineVote</p>
+  <h1>{{ "Join the vote" if mode == "register" else "Welcome back" }}</h1>
+  <p class="muted">{{ "Create an account to pick this week's movie." if mode == "register" else "Log in to cast your weekly vote." }}</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Username
+      <input name="username" required minlength="3" maxlength="40" autocomplete="username">
+    </label>
+    <label>Password
+      <input name="password" type="password" required minlength="8"
+             autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}">
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">
+      {{ "Create account" if mode == "register" else "Log in" }}
+    </button>
+  </form>
+  <p class="muted small switch">
+    {% if mode == "register" %}
+      Already have an account? <a href="{{ url_for('login') }}">Log in</a>
+    {% else %}
+      New here? <a href="{{ url_for('register') }}">Create an account</a>
+    {% endif %}
+  </p>
+</section>
+{% endblock %}

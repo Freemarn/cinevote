@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Vote{% endblock %}
+{% block content %}
+<section class="hero fade-up">
+  <p class="eyebrow">Week {{ week }}</p>
+  <h1>Pick the movie everyone should watch this week</h1>
+  <p class="muted">One vote per person per week. The winner becomes next week's recommendation.</p>
+</section>
+
+{% if recommendation %}
+<section class="spotlight fade-up" style="--d:.1s">
+  <span class="spotlight-badge">Recommended watch</span>
+  <h2>{{ recommendation.title }} {% if recommendation.year %}<span class="muted">({{ recommendation.year }})</span>{% endif %}</h2>
+  <p>Winner of {{ recommendation.week }} with {{ recommendation.votes }} vote{{ "s" if recommendation.votes != 1 }}.</p>
+</section>
+{% endif %}
+
+<div class="layout">
+  <section>
+    <h3 class="section-title">This week's ballot</h3>
+    <div class="grid">
+      {% for m in board %}
+      <article class="card fade-up {% if voted_movie == m.id %}chosen{% endif %}" style="--d: {{ '%.2f'|format(loop.index0 * 0.05) }}s">
+        <div class="poster" style="--h: {{ (m.id * 47) % 360 }}"><span>{{ m.title[:1] }}</span></div>
+        <div class="card-body">
+          <h4>{{ m.title }}</h4>
+          <p class="meta">{{ m.year or "" }}{% if m.genre %} · {{ m.genre }}{% endif %}</p>
+          <p class="blurb">{{ m.blurb or "" }}</p>
+          {% if voted_movie %}
+            {% if voted_movie == m.id %}<span class="pill pill-ok">Your pick ✓</span>{% endif %}
+          {% else %}
+            <form method="post" action="{{ url_for('vote') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="movie_id" value="{{ m.id }}">
+              <button class="btn btn-primary btn-block" type="submit">Vote</button>
+            </form>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  <aside class="panel fade-up" style="--d:.15s">
+    <h3 class="section-title">Live leaderboard</h3>
+    <p class="muted small"><span data-total>{{ total }}</span> votes this week · refreshes every 10 s</p>
+    <ol class="board" data-live-board>
+      {% for m in board %}
+      <li data-movie-id="{{ m.id }}">
+        <div class="row"><span>{{ m.title }}</span><strong class="count">{{ m.votes }}</strong></div>
+        <div class="bar"><div class="fill" style="--w: {{ ((m.votes / max_votes * 100) if max_votes else 0)|round(1) }}%"></div></div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% if winners %}
+    <h3 class="section-title">Hall of fame</h3>
+    <ul class="fame">
+      {% for w in winners %}<li><span class="muted">{{ w.week }}</span>{{ w.title }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}
