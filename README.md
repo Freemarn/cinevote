@@ -892,7 +892,7 @@ npx jest
 
 ---
 
-## 18. Application walkthrough
+## 17. Application walkthrough
 
 From here on you never copy code onto a server. You change it on GitHub, in a **pull request**: a
 proposed change on its own branch that the pipeline tests before it can reach `main`. Merging the PR
@@ -925,7 +925,7 @@ it has been cleaned up; the next merge to `main` deploys over it as usual.
 
 ---
 
-## 16. Testing
+## 18. Testing
 
 The screenshots below are the running application, reached over the frontend's public IP
 (`http://3.235.168.246`). The browser marks it **Not Secure** because the app is served on HTTP — port 443
