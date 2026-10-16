@@ -5,7 +5,7 @@ released through a GitHub Actions pipeline with OIDC-authenticated deploys, and 
 CloudWatch logs, metrics and email alarms.
 
 Guide authors: **@Freeman** — *Movie Voting App on AWS* (Oct 4, 2026) and
-*CineVote CI/CD Pipeline: GitHub Actions* (Oct 8, 2026).
+*CineVote CI/CD Pipeline: GitHub Actions* (Oct 12, 2026).
 
 > **Looking at the images:** every screenshot in this README lives in `assets/` beside this file.
 > Keep `README.md` and the `assets/` folder together at the repository root and the images render.
